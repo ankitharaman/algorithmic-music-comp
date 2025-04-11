@@ -221,3 +221,34 @@ def note_to_chord(key, scale_degree, accidental, chord_type='triad'):
     # You can add other chord types here
     
     return chord
+
+# Train the model
+melody_measures, harmony_pairs = prepare_data(score)
+X, y = prepare_training_data(melody_measures, harmony_pairs)
+model = train_model(X, y)
+
+# Make predictions on a new melody
+def predict_harmony(model, melody_sequence, key):
+    # Preprocess melody
+    processed_melody = []
+    for scale_deg, acc, dur in melody_sequence:
+        normalized_scale_deg = scale_deg - 1
+        processed_melody.append([normalized_scale_deg, acc + 1, dur])
+    
+    # Reshape for model input
+    model_input = np.array([processed_melody])
+    
+    # Get predictions
+    predictions = model.predict(model_input)
+    
+    # Extract predicted values
+    first_scale = np.argmax(predictions[0][0]) + 1  # Convert back to 1-7
+    first_acc = np.argmax(predictions[1][0]) - 1    # Convert back to -1,0,1
+    second_scale = np.argmax(predictions[2][0]) + 1
+    second_acc = np.argmax(predictions[3][0]) - 1
+    
+    # Convert to chords (post-processing)
+    first_chord = note_to_chord(key, first_scale, first_acc)  
+    second_chord = note_to_chord(key, second_scale, second_acc)
+    
+    return first_chord, second_chord
