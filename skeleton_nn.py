@@ -8,7 +8,6 @@ def prepare_data(score, key=None):
     if key is None:
         key = score.analyze('key')
     
-    
     # Find melody and harmony parts
     melody_part = score.parts[0]
     harmony_part = score.parts[1]
@@ -28,7 +27,8 @@ def prepare_data(score, key=None):
                 continue
             
             if note.isChord:
-                pitch = note.sortDiatonicAscending().pitches[-1]  # Get top note
+                # pitch = note.sortDiatonicAscending().pitches[-1]  # Get top note
+                pitch = note.root()
             else:
                 pitch = note.pitch
             
@@ -46,8 +46,6 @@ def prepare_data(score, key=None):
             
         # Add measure to the full array of measures
         melody_measures.append(melody_measure)
-        
-
 
         # Harmony Processing
         harmony_measure = []
@@ -70,7 +68,8 @@ def prepare_data(score, key=None):
                     continue
                 
                 if note.isChord:
-                    pitch = note.sortDiatonicAscending().pitches[-1]  # Get top note
+                    # pitch = note.sortDiatonicAscending().pitches[-1]  # Get top note
+                    pitch = note.root()
                 else:
                     pitch = note.pitch
                 
@@ -89,14 +88,15 @@ def prepare_data(score, key=None):
                 print(f"No note found at beat {beat_position + 1}")
                 harmony_measure.append((None, 0, 2.0))
 
-            # Add measure to the full array of measures
-            harmony_measures.append(harmony_measure)
-
+        # Add measure to the full array of measures
+        harmony_measures.append(harmony_measure)
+        
     print(f"Number of melody measures: {len(melody_measures)}")
     print(f"Number of harmony measures: {len(harmony_measures)}")
 
 
     return melody_measures, harmony_measures
+
 
 def prepare_training_data(melody_measures, harmony_measures):
     X = []  # Melody sequences
@@ -123,8 +123,8 @@ def prepare_training_data(melody_measures, harmony_measures):
                 normalized_scale_deg = scale_deg - 1
                 melody_seq.append([normalized_scale_deg, acc + 1, dur])  # Shift accidental to 0,1,2
         
-        # Check if we have enough harmony notes
-        if len(harmony_measure) >= 2:
+        # Make sure we have exactly two harmony notes (assuming beat 1 and beat 3)
+        if len(harmony_measure) == 2:
             first_note = harmony_measure[0]
             second_note = harmony_measure[1]
             
@@ -146,7 +146,10 @@ def prepare_training_data(melody_measures, harmony_measures):
             y_first_acc.append(first_acc + 1)      # Convert to 0,1,2
             y_second_scale.append(second_scale - 1 if second_scale is not None else 0)
             y_second_acc.append(second_acc + 1)
+        else:
+            print(f"Skipping measure {i} - expected 2 harmony notes, got {len(harmony_measure)}")
     
+    print(f"Created {len(X)} training examples")
     return X, {
         'first_scale_degree': np.array(y_first_scale),
         'first_accidental': np.array(y_first_acc),
@@ -259,53 +262,109 @@ def predict_harmony(model, melody_measure, key):
 
 def create_note_or_chord(key, scale_degree, accidental, create_chord=True):
     """Convert scale degree to a note or chord."""
-    scale = key.getScale()
+    try:
+        scale = key.getScale()
+        
+        # Get the pitch for the scale degree
+        pitch = scale.pitchFromDegree(scale_degree)
+        
+        # Apply accidental
+        if accidental == -1:
+            pitch = pitch.transpose(-1)
+        elif accidental == 1:
+            pitch = pitch.transpose(1)
+        
+        if create_chord:
+            # Determine chord type based on scale degree
+            if key.mode == 'major':
+                # Major key harmony
+                if scale_degree in [1, 4, 5]:  # Major chords (I, IV, V)
+                    chord = music21.chord.Chord([pitch, pitch.transpose(4), pitch.transpose(7)])
+                    return chord
+                elif scale_degree in [2, 3, 6]:  # Minor chords (ii, iii, vi)
+                    chord = music21.chord.Chord([pitch, pitch.transpose(3), pitch.transpose(7)])
+                    return chord
+                elif scale_degree == 7:  # Diminished chord (vii°)
+                    chord = music21.chord.Chord([pitch, pitch.transpose(3), pitch.transpose(6)])
+                    return chord
+            else:
+                # Minor key harmony (simplified)
+                if scale_degree in [1, 4]:  # Minor chords (i, iv)
+                    chord = music21.chord.Chord([pitch, pitch.transpose(3), pitch.transpose(7)])
+                    return chord
+                elif scale_degree in [3, 5, 6]:  # Major chords (III, V, VI)
+                    chord = music21.chord.Chord([pitch, pitch.transpose(4), pitch.transpose(7)])
+                    return chord
+                elif scale_degree in [2, 7]:  # Diminished chords (ii°, vii°)
+                    chord = music21.chord.Chord([pitch, pitch.transpose(3), pitch.transpose(6)])
+                    return chord
+        else:
+            # Just return the note
+            return music21.note.Note(pitch)
+    except Exception as e:
+        print(f"Error creating chord: {e}")
+        # Return a C major chord as fallback
+        return music21.chord.Chord(['C4', 'E4', 'G4'])
+
+def train_on_multiple_scores(score_files, epochs=30, batch_size=32):
+    # Initialize empty lists to hold all processed data
+    all_melody_measures = []
+    all_harmony_measures = []
     
-    # Get the pitch for the scale degree
-    pitch = scale.pitchFromDegree(scale_degree)
+    # Process each score
+    for file in score_files:
+        # Load the score
+        score = music21.converter.parse(file)
+        
+        # Analyze key
+        key = score.analyze('key')
+        print(f"Processing {file} in key {key}")
+        
+        # Process the score
+        melody_measures, harmony_measures = prepare_data(score, key)
+        
+        # Add to master lists
+        all_melody_measures.extend(melody_measures)
+        all_harmony_measures.extend(harmony_measures)
     
-    # Apply accidental
-    if accidental == -1:
-        pitch = pitch.transpose(-1)
-    elif accidental == 1:
-        pitch = pitch.transpose(1)
+    print(f"Total melody measures collected: {len(all_melody_measures)}")
+    print(f"Total harmony measures collected: {len(all_harmony_measures)}")
     
-    if create_chord:
-        # Determine chord type based on scale degree
-        if scale_degree in [1, 4, 5]:  # Major chords (I, IV, V)
-            chord = music21.chord.Chord([pitch, pitch.transpose(4), pitch.transpose(7)])
-            return chord
-        elif scale_degree in [2, 3, 6]:  # Minor chords (ii, iii, vi)
-            chord = music21.chord.Chord([pitch, pitch.transpose(3), pitch.transpose(7)])
-            return chord
-        elif scale_degree == 7:  # Diminished chord (vii°)
-            chord = music21.chord.Chord([pitch, pitch.transpose(3), pitch.transpose(6)])
-            return chord
-    else:
-        # Just return the note
-        return music21.note.Note(pitch)
-
-# Load your score
-score = music21.converter.parse('your_music_file.xml')
-
-# Get key
-key = score.analyze('key')
-
-# Prepare data
-melody_measures, harmony_measures = prepare_data(score, key)
-
-# Create training data
-X, y = prepare_training_data(melody_measures, harmony_measures)
-
-# Train model
-model = train_model(X, y)
-
-# Save model
-model.save('harmony_model.h5')
-
-# Later, load model and make predictions
-loaded_model = keras.models.load_model('harmony_model.h5')
-
-# For a new melody measure
-new_melody_measure = [(1, 0, 1.0), (3, 0, 1.0), (5, 0, 1.0), (8, 0, 1.0)]  # Example melody
-first_chord, second_chord = predict_harmony(loaded_model, new_melody_measure, key)
+    # Create training data
+    X, y = prepare_training_data(all_melody_measures, all_harmony_measures)
+    
+    # Split data
+    from sklearn.model_selection import train_test_split
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, {key: y[key] for key in y.keys()}, test_size=0.2, random_state=42
+    )
+    
+    # Create and train model
+    model = create_model()
+    
+    # Pad sequences
+    X_train_padded = keras.preprocessing.sequence.pad_sequences(
+        X_train, padding='post', dtype='float32'
+    )
+    X_test_padded = keras.preprocessing.sequence.pad_sequences(
+        X_test, padding='post', dtype='float32'
+    )
+    
+    # Add early stopping
+    early_stopping = keras.callbacks.EarlyStopping(
+        monitor='val_loss', patience=5, restore_best_weights=True
+    )
+    
+    # Train model
+    history = model.fit(
+        X_train_padded, y_train, 
+        epochs=epochs,
+        batch_size=batch_size,
+        validation_data=(X_test_padded, y_test),
+        callbacks=[early_stopping]
+    )
+    
+    # Save model
+    model.save('harmony_model.h5')
+    
+    return model, history
