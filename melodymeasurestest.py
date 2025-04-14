@@ -51,6 +51,8 @@ def predict_harmony(model, melody_measure, key):
     
     # Get predictions
     predictions = model.predict(padded_input)
+
+    print(predictions)
     
     # Extract predicted values and ensure they're valid
     first_scale = np.argmax(predictions[0][0]) + 1  # Convert back to 1-7
@@ -79,77 +81,76 @@ def predict_harmony(model, melody_measure, key):
 def create_note_or_chord(key, scale_degree, accidental, create_chord=True):
     """Convert scale degree to a note or chord."""
     try:
+        # Get the diatonic pitch class for this scale degree in the key
         scale = key.getScale()
-        
-        # Get the pitch for the scale degree
-        # This is the problematic line - let's fix it
-        if scale_degree < 1 or scale_degree > 7:
-            print(f"Invalid scale degree: {scale_degree}, defaulting to 1")
-            scale_degree = 1
-            
-        pitch = scale.pitchFromDegree(scale_degree)
+        pitch_obj = scale.pitchFromDegree(scale_degree)
         
         # Apply accidental
         if accidental == -1:
-            pitch = pitch.transpose(-1)
+            pitch_obj = pitch_obj.transpose(-1)
         elif accidental == 1:
-            pitch = pitch.transpose(1)
+            pitch_obj = pitch_obj.transpose(1)
+        
+        # Get pitch name with octave
+        pitch_name = pitch_obj.nameWithOctave
         
         if create_chord:
-            # Create chord based on root pitch
+            # Create triad based on scale degree
             if key.mode == 'major':
-                # Major key harmony
-                if scale_degree in [1, 4, 5]:  # Major chords (I, IV, V)
-                    chord = music21.chord.Chord([
-                        pitch.nameWithOctave, 
-                        pitch.transpose(4).nameWithOctave, 
-                        pitch.transpose(7).nameWithOctave
-                    ])
-                    return chord
-                elif scale_degree in [2, 3, 6]:  # Minor chords (ii, iii, vi)
-                    chord = music21.chord.Chord([
-                        pitch.nameWithOctave, 
-                        pitch.transpose(3).nameWithOctave, 
-                        pitch.transpose(7).nameWithOctave
-                    ])
-                    return chord
-                elif scale_degree == 7:  # Diminished chord (vii°)
-                    chord = music21.chord.Chord([
-                        pitch.nameWithOctave, 
-                        pitch.transpose(3).nameWithOctave, 
-                        pitch.transpose(6).nameWithOctave
-                    ])
-                    return chord
+                if scale_degree in [1, 4, 5]:  # Major chords in major key
+                    # Create a major triad
+                    root = pitch_name
+                    third = pitch_obj.transpose(4).nameWithOctave  # Major third
+                    fifth = pitch_obj.transpose(7).nameWithOctave  # Perfect fifth
+                    return music21.chord.Chord([root, third, fifth])
+                    
+                elif scale_degree in [2, 3, 6]:  # Minor chords in major key
+                    # Create a minor triad
+                    root = pitch_name
+                    third = pitch_obj.transpose(3).nameWithOctave  # Minor third
+                    fifth = pitch_obj.transpose(7).nameWithOctave  # Perfect fifth
+                    return music21.chord.Chord([root, third, fifth])
+                    
+                elif scale_degree == 7:  # Diminished chord in major key
+                    # Create a diminished triad
+                    root = pitch_name
+                    third = pitch_obj.transpose(3).nameWithOctave  # Minor third
+                    fifth = pitch_obj.transpose(6).nameWithOctave  # Diminished fifth
+                    return music21.chord.Chord([root, third, fifth])
+                    
+                else:
+                    # Default to major chord
+                    return music21.chord.Chord([pitch_name, 
+                                              pitch_obj.transpose(4).nameWithOctave,
+                                              pitch_obj.transpose(7).nameWithOctave])
             else:
-                # Minor key harmony
-                if scale_degree in [1, 4]:  # Minor chords (i, iv)
-                    chord = music21.chord.Chord([
-                        pitch.nameWithOctave, 
-                        pitch.transpose(3).nameWithOctave, 
-                        pitch.transpose(7).nameWithOctave
-                    ])
-                    return chord
-                elif scale_degree in [3, 5, 6]:  # Major chords (III, V, VI)
-                    chord = music21.chord.Chord([
-                        pitch.nameWithOctave, 
-                        pitch.transpose(4).nameWithOctave, 
-                        pitch.transpose(7).nameWithOctave
-                    ])
-                    return chord
-                elif scale_degree in [2, 7]:  # Diminished chords (ii°, vii°)
-                    chord = music21.chord.Chord([
-                        pitch.nameWithOctave, 
-                        pitch.transpose(3).nameWithOctave, 
-                        pitch.transpose(6).nameWithOctave
-                    ])
-                    return chord
+                # Minor key harmonization (simplified)
+                # Similar structure for minor keys
+                if scale_degree in [1, 4]:  # Minor chords in minor key
+                    return music21.chord.Chord([pitch_name, 
+                                              pitch_obj.transpose(3).nameWithOctave,
+                                              pitch_obj.transpose(7).nameWithOctave])
+                elif scale_degree in [3, 5, 6]:  # Major chords in minor key
+                    return music21.chord.Chord([pitch_name, 
+                                              pitch_obj.transpose(4).nameWithOctave,
+                                              pitch_obj.transpose(7).nameWithOctave])
+                elif scale_degree in [2, 7]:  # Diminished chords in minor key
+                    return music21.chord.Chord([pitch_name, 
+                                              pitch_obj.transpose(3).nameWithOctave,
+                                              pitch_obj.transpose(6).nameWithOctave])
+                else:
+                    # Default to minor chord
+                    return music21.chord.Chord([pitch_name, 
+                                              pitch_obj.transpose(3).nameWithOctave,
+                                              pitch_obj.transpose(7).nameWithOctave])
         else:
             # Just return the note
-            return music21.note.Note(pitch)
+            return music21.note.Note(pitch_name)
+            
     except Exception as e:
-        print(f"Error creating chord: {e}")
+        print(f"Error creating chord for scale degree {scale_degree}, accidental {accidental}: {e}")
         # Return a C major chord as fallback
-        return music21.chord.Chord(['C4', 'E4', 'G4'])
+        return music21.chord.Chord(['C3', 'E3', 'G3'])
 
 # Create a function to process each measure separately
 def predict_harmony_for_measures(model, melody, key):
