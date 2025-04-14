@@ -163,11 +163,15 @@ def create_model(num_scale_degrees=7):
     # Input layer for melody sequence
     input_layer = keras.Input(shape=(None, 3))  # (scale_degree, accidental, duration)
     
-    # LSTM for processing melody
-    x = layers.LSTM(64, return_sequences=True)(input_layer)
-    x = layers.LSTM(64)(x)
+    # Bidirectional LSTM layers
+    x = layers.Bidirectional(layers.LSTM(128, return_sequences=True))(input_layer)
+    x = layers.Dropout(0.3)(x)  # Add dropout to prevent overfitting
+    x = layers.Bidirectional(layers.LSTM(128))(x)
+    x = layers.Dropout(0.3)(x)
     
-    # Dense layers
+    # Deeper dense layers
+    x = layers.Dense(256, activation='relu')(x)
+    x = layers.Dropout(0.2)(x)
     x = layers.Dense(128, activation='relu')(x)
     
     # Output two harmony notes
