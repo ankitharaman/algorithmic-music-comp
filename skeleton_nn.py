@@ -160,7 +160,7 @@ def prepare_training_data(melody_measures, harmony_measures):
 
 # simplified model for two note prediction
 def create_model(num_scale_degrees=7):
-    # Input layer for melody sequence 
+    # Input layer for melody sequence
     input_layer = keras.Input(shape=(None, 3))  # (scale_degree, accidental, duration)
     
     # LSTM for processing melody
@@ -189,7 +189,7 @@ def create_model(num_scale_degrees=7):
         ]
     )
     
-    # Compile with multiple outputs
+    # Compile with multiple outputs - specify metrics for each output
     model.compile(
         optimizer='adam',
         loss={
@@ -198,7 +198,12 @@ def create_model(num_scale_degrees=7):
             'second_scale_degree': 'sparse_categorical_crossentropy',
             'second_accidental': 'sparse_categorical_crossentropy'
         },
-        metrics=['accuracy']
+        metrics={
+            'first_scale_degree': ['accuracy'],
+            'first_accidental': ['accuracy'],
+            'second_scale_degree': ['accuracy'],
+            'second_accidental': ['accuracy']
+        }
     )
     
     return model
@@ -331,13 +336,26 @@ def train_on_multiple_scores(score_files, epochs=30, batch_size=32):
     print(f"Total harmony measures collected: {len(all_harmony_measures)}")
     
     # Create training data
-    X, y = prepare_training_data(all_melody_measures, all_harmony_measures)
+    X, y_dict = prepare_training_data(all_melody_measures, all_harmony_measures)
     
-    # Split data
+    # Split data - We need to split X and each y component separately
     from sklearn.model_selection import train_test_split
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, {key: y[key] for key in y.keys()}, test_size=0.2, random_state=42
-    )
+    
+    # First split X into train and test
+    X_train, X_test = train_test_split(X, test_size=0.2, random_state=42)
+    
+    # Now split each component of y
+    y_train = {}
+    y_test = {}
+    
+    # Get the indices for train and test sets
+    indices = np.arange(len(X))
+    train_indices, test_indices = train_test_split(indices, test_size=0.2, random_state=42)
+    
+    # Split each component of y according to these indices
+    for key in y_dict:
+        y_train[key] = y_dict[key][train_indices]
+        y_test[key] = y_dict[key][test_indices]
     
     # Create and train model
     model = create_model()
@@ -368,3 +386,75 @@ def train_on_multiple_scores(score_files, epochs=30, batch_size=32):
     model.save('harmony_model.h5')
     
     return model, history
+
+import os
+import music21
+from tensorflow import keras
+import numpy as np
+
+def train_model_on_directory(directory_path, epochs=30, batch_size=32):
+    """
+    Train a harmony prediction model on all XML files in the specified directory.
+    
+    Args:
+        directory_path: Path to the directory containing XML score files
+        epochs: Number of training epochs
+        batch_size: Training batch size
+        
+    Returns:
+        Trained model and training history
+    """
+    # Find all XML files in the directory
+    score_files = []
+    for file in os.listdir(directory_path):
+        if file.endswith('.xml') or file.endswith('.mxl'):
+            full_path = os.path.join(directory_path, file)
+            score_files.append(full_path)
+    
+    print(f"Found {len(score_files)} XML files in {directory_path}")
+    
+    if len(score_files) == 0:
+        print("No XML files found. Please check the directory path.")
+        return None, None
+    
+    # Train on the found files
+    return train_on_multiple_scores(score_files, epochs, batch_size)
+
+# Example usage
+model, history = train_model_on_directory('scores', epochs=40, batch_size=16)
+
+# To plot learning curves
+import matplotlib.pyplot as plt
+
+def plot_training_history(history):
+    """Plot the training and validation loss and accuracy curves"""
+    plt.figure(figsize=(15, 5))
+    
+    # Plot loss
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history['loss'], label='Training Loss')
+    plt.plot(history.history['val_loss'], label='Validation Loss')
+    plt.title('Model Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    
+    # Plot one of the accuracies (first scale degree)
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['first_scale_degree_accuracy'], label='Training Accuracy')
+    plt.plot(history.history['val_first_scale_degree_accuracy'], label='Validation Accuracy')
+    plt.title('First Scale Degree Accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    
+    plt.tight_layout()
+    plt.savefig('training_history.png')
+    plt.show()
+
+# Plot the training results
+if history is not None:
+    plot_training_history(history)
+
+# If your scores are in a directory called 'scores' in the current working directory
+model, history = train_model_on_directory('scores')
