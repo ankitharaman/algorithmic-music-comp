@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 
+import sys
 import preprocessing
 from music21 import *
 import pickle
 
 
-def main():
+def run_preprocessor():
     positiveSongs = ["./scores/canon.mxl",
                      "./scores/odetojoy.mxl",
                      "./scores/VAIANA_piano_solo_de_Disney.mxl",
@@ -37,5 +38,11 @@ def main():
     negative_file.close()
 
 
+def main():
+    pass
+
 if __name__ == "__main__":
+    if "--preprocess" in sys.argv:
+        run_preprocessor()
+
     main()
