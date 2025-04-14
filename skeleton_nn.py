@@ -161,7 +161,16 @@ def prepare_training_data(melody_measures, harmony_measures):
 # simplified model for two note prediction
 def create_model(num_scale_degrees=7):
     # Input layer for melody sequence
-    input_layer = keras.Input(shape=(None, 3))  # (scale_degree, accidental, duration)
+    # input_layer = keras.Input(shape=(None, 3))  # (scale_degree, accidental, duration)
+    
+    # # LSTM for processing melody
+    # x = layers.LSTM(64, return_sequences=True)(input_layer)
+    # x = layers.LSTM(64)(x)
+    
+    # # Dense layers
+    # x = layers.Dense(128, activation='relu')(x)
+
+    input_layer = keras.Input(shape=(None, 3))
     
     # Bidirectional LSTM layers
     x = layers.Bidirectional(layers.LSTM(128, return_sequences=True))(input_layer)
@@ -236,12 +245,13 @@ def train_model(X, y):
     return model
 
 # Make predictions on a new melody
-def predict_harmony(model, melody_measure, key):
+def predict_harmony(model, melody_measure, key, temperature=1.0, use_sampling=False):
+    """Predict harmony with optional temperature control and sampling."""
     # Preprocess melody
     processed_melody = []
     for scale_deg, acc, dur in melody_measure:
         if scale_deg is None:  # Rest
-            processed_melody.append([-1, 1, dur])  # Use -1 for rest scale degree, 1 for neutral accidental
+            processed_melody.append([-1, 1, dur])  # Use -1 for rest scale degree
         else:
             normalized_scale_deg = scale_deg - 1
             processed_melody.append([normalized_scale_deg, acc + 1, dur])
@@ -257,11 +267,33 @@ def predict_harmony(model, melody_measure, key):
     # Get predictions
     predictions = model.predict(model_input)
     
-    # Extract predicted values
-    first_scale = np.argmax(predictions[0][0]) + 1  # Convert back to 1-7
-    first_acc = np.argmax(predictions[1][0]) - 1    # Convert back to -1,0,1
-    second_scale = np.argmax(predictions[2][0]) + 1
-    second_acc = np.argmax(predictions[3][0]) - 1
+    # Helper function to apply temperature
+    def apply_temperature(probs, temp):
+        if temp == 1.0:
+            return probs
+        # Apply temperature scaling
+        probs = np.exp(np.log(probs) / temp)
+        # Renormalize
+        return probs / np.sum(probs)
+    
+    # Apply temperature and/or sampling
+    first_scale_probs = apply_temperature(predictions[0][0], temperature)
+    first_acc_probs = apply_temperature(predictions[1][0], temperature)
+    second_scale_probs = apply_temperature(predictions[2][0], temperature)
+    second_acc_probs = apply_temperature(predictions[3][0], temperature)
+    
+    if use_sampling:
+        # Sample from distributions
+        first_scale = np.random.choice(7, p=first_scale_probs) + 1  # Convert 0-6 to 1-7
+        first_acc = np.random.choice(3, p=first_acc_probs) - 1  # Convert 0-2 to -1,0,1
+        second_scale = np.random.choice(7, p=second_scale_probs) + 1
+        second_acc = np.random.choice(3, p=second_acc_probs) - 1
+    else:
+        # Use argmax
+        first_scale = np.argmax(first_scale_probs) + 1
+        first_acc = np.argmax(first_acc_probs) - 1
+        second_scale = np.argmax(second_scale_probs) + 1
+        second_acc = np.argmax(second_acc_probs) - 1
     
     # Create actual notes/chords
     first_note = create_note_or_chord(key, first_scale, first_acc)
@@ -272,46 +304,78 @@ def predict_harmony(model, melody_measure, key):
 def create_note_or_chord(key, scale_degree, accidental, create_chord=True):
     """Convert scale degree to a note or chord."""
     try:
-        scale = key.getScale()
+        # Manual mapping of scale degrees to pitch names in C major
+        c_major_pitches = {
+            1: 'C', 
+            2: 'D', 
+            3: 'E', 
+            4: 'F', 
+            5: 'G', 
+            6: 'A', 
+            7: 'B'
+        }
         
-        # Get the pitch for the scale degree
-        pitch = scale.pitchFromDegree(scale_degree)
+        # Get base pitch name
+        if scale_degree not in c_major_pitches:
+            print(f"Invalid scale degree: {scale_degree}, defaulting to 1")
+            scale_degree = 1
+        
+        base_pitch = c_major_pitches[scale_degree]
         
         # Apply accidental
         if accidental == -1:
-            pitch = pitch.transpose(-1)
+            base_pitch += '-'  # Flat
         elif accidental == 1:
-            pitch = pitch.transpose(1)
+            base_pitch += '#'  # Sharp
+        
+        # Add octave
+        pitch_with_octave = base_pitch + '4'  # Default to octave 4
+        
+        # Transpose to correct key
+        if key.tonic.name != 'C':
+            # Calculate semitone difference between C and the target key
+            c_pitch = music21.pitch.Pitch('C')
+            key_tonic = music21.pitch.Pitch(key.tonic.name)
+            semitones = (key_tonic.ps - c_pitch.ps) % 12
+            
+            # Create the pitch and transpose it
+            pitch_obj = music21.pitch.Pitch(pitch_with_octave)
+            pitch_obj = pitch_obj.transpose(semitones)
+            pitch_with_octave = pitch_obj.nameWithOctave
+        
+        print(f"Creating chord with root: {pitch_with_octave}")
         
         if create_chord:
-            # Determine chord type based on scale degree
-            if key.mode == 'major':
-                # Major key harmony
-                if scale_degree in [1, 4, 5]:  # Major chords (I, IV, V)
-                    chord = music21.chord.Chord([pitch, pitch.transpose(4), pitch.transpose(7)])
-                    return chord
-                elif scale_degree in [2, 3, 6]:  # Minor chords (ii, iii, vi)
-                    chord = music21.chord.Chord([pitch, pitch.transpose(3), pitch.transpose(7)])
-                    return chord
-                elif scale_degree == 7:  # Diminished chord (vii°)
-                    chord = music21.chord.Chord([pitch, pitch.transpose(3), pitch.transpose(6)])
-                    return chord
+            # Create chord based on pitch and scale degree
+            chord_notes = [pitch_with_octave]
+            
+            # Add third
+            third_pitch = music21.pitch.Pitch(pitch_with_octave)
+            if scale_degree in [1, 4, 5] and key.mode == 'major' or \
+               scale_degree in [3, 5, 6] and key.mode == 'minor':
+                # Major third
+                third_pitch = third_pitch.transpose(4)
             else:
-                # Minor key harmony (simplified)
-                if scale_degree in [1, 4]:  # Minor chords (i, iv)
-                    chord = music21.chord.Chord([pitch, pitch.transpose(3), pitch.transpose(7)])
-                    return chord
-                elif scale_degree in [3, 5, 6]:  # Major chords (III, V, VI)
-                    chord = music21.chord.Chord([pitch, pitch.transpose(4), pitch.transpose(7)])
-                    return chord
-                elif scale_degree in [2, 7]:  # Diminished chords (ii°, vii°)
-                    chord = music21.chord.Chord([pitch, pitch.transpose(3), pitch.transpose(6)])
-                    return chord
+                # Minor third
+                third_pitch = third_pitch.transpose(3)
+            chord_notes.append(third_pitch.nameWithOctave)
+            
+            # Add fifth
+            fifth_pitch = music21.pitch.Pitch(pitch_with_octave)
+            if scale_degree == 7 or (scale_degree == 2 and key.mode == 'minor'):
+                # Diminished fifth
+                fifth_pitch = fifth_pitch.transpose(6)
+            else:
+                # Perfect fifth
+                fifth_pitch = fifth_pitch.transpose(7)
+            chord_notes.append(fifth_pitch.nameWithOctave)
+            
+            return music21.chord.Chord(chord_notes)
         else:
-            # Just return the note
-            return music21.note.Note(pitch)
+            # Return a single note
+            return music21.note.Note(pitch_with_octave)
     except Exception as e:
-        print(f"Error creating chord: {e}")
+        print(f"Detailed error creating chord for scale degree {scale_degree}, accidental {accidental}: {str(e)}")
         # Return a C major chord as fallback
         return music21.chord.Chord(['C4', 'E4', 'G4'])
 
@@ -371,11 +435,6 @@ def train_on_multiple_scores(score_files, epochs=30, batch_size=32):
     X_test_padded = keras.preprocessing.sequence.pad_sequences(
         X_test, padding='post', dtype='float32'
     )
-    
-    # # Add early stopping
-    # early_stopping = keras.callbacks.EarlyStopping(
-    #     monitor='val_loss', patience=5, restore_best_weights=True
-    # )
     
     # Train model
     history = model.fit(
@@ -462,5 +521,3 @@ if history is not None:
 
 # If your scores are in a directory called 'scores' in the current working directory
 model, history = train_model_on_directory('scores')
-
-
