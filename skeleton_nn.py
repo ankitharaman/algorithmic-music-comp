@@ -368,10 +368,10 @@ def train_on_multiple_scores(score_files, epochs=30, batch_size=32):
         X_test, padding='post', dtype='float32'
     )
     
-    # Add early stopping
-    early_stopping = keras.callbacks.EarlyStopping(
-        monitor='val_loss', patience=5, restore_best_weights=True
-    )
+    # # Add early stopping
+    # early_stopping = keras.callbacks.EarlyStopping(
+    #     monitor='val_loss', patience=5, restore_best_weights=True
+    # )
     
     # Train model
     history = model.fit(
@@ -379,7 +379,7 @@ def train_on_multiple_scores(score_files, epochs=30, batch_size=32):
         epochs=epochs,
         batch_size=batch_size,
         validation_data=(X_test_padded, y_test),
-        callbacks=[early_stopping]
+        # callbacks=[early_stopping]
     )
     
     # Save model
@@ -458,3 +458,5 @@ if history is not None:
 
 # If your scores are in a directory called 'scores' in the current working directory
 model, history = train_model_on_directory('scores')
+
+
