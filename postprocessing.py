@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from music21 import *
+import markov_chain
 
 postive_measures = []
 negative_measures = []
@@ -33,7 +34,28 @@ def evaluate_measure_pair(k, melody_measure, harmony_measure):
         
     if len(constructed_harmony) > 0:
         prev_chord = constructed_harmony[-1]
+        scale_deg1 = k.getScaleDegreeFromPitch(prev_chord.root())
+        curr_scale_deg = k.getScaleDegreeFromPitch(harmony_measure[0].root())
+        chord_progression_score += markov_chain.M2[scale_deg1 - 1][curr_scale_deg - 1]
+
+    prev_chord = harmony_measure[0]
+    scale_deg1 = k.getScaleDegreeFromPitch(prev_chord.root())
+    curr_scale_deg = k.getScaleDegreeFromPitch(harmony_measure[1].root())
+    chord_progression_score += markov_chain.M2[scale_deg1 - 1][curr_scale_deg - 1]
 
 
-    score = tone_match_score + chord_progression_score*num_melody_notes
+    score = tone_match_score + chord_progression_score*num_melody_notes//2
     return score/num_melody_notes
+
+def construct_harmony(k, melody_measures, pos_harmony_measures, 
+                      neg_harmony_measures, pos_sent_score, neg_sent_score):
+    for i, melody_measure in enumerate(melody_measures):
+        pos_score = evaluate_measure_pair(k, melody_measure, pos_harmony_measures[i])
+        pos_score = (pos_score + (pos_sent_score * 0.5)) / 1.5
+        neg_score = evaluate_measure_pair(k, melody_measure, neg_harmony_measures[i])
+        neg_score = (neg_score + (neg_sent_score * 0.5)) / 1.5
+
+        if pos_score > neg_score:
+            constructed_harmony.append(pos_harmony_measures[i])
+        else:
+            constructed_harmony.append(neg_harmony_measures[i])
