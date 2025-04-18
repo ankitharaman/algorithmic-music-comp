@@ -127,11 +127,12 @@ def create_note_or_chord(key, scale_degree, accidental, create_chord=True):
         pitches = key.getScale().getPitches()
         base_pitch = str(pitches[scale_degree-1])
 
-        # Apply accidental
-        if accidental == -1:
-            base_pitch += '-'  # Flat
-        elif accidental == 1:
-            base_pitch += '#'  # Sharp
+        if not "#" in base_pitch and not "-" in base_pitch:
+            # Apply accidental
+            if accidental == -1:
+                base_pitch += '-'  # Flat
+            elif accidental == 1:
+                base_pitch += '#'  # Sharp
 
         # Add octave
         # pitch_with_octave = base_pitch + '4'  # Default to octave 4
@@ -253,7 +254,7 @@ if __name__ == "__main__":
     # Create key
     k = "Eb"
     key = music21.key.Key(k)  # C major
-    user_message = "This is a test message to generate a melody."
+    user_message = "the quick brown fox jumps over the lazy dog"
 
     circular_buffer_stream = generate_cb_stream(user_message, key, major=True)
     hashtable_stream = generate_hashtable_stream(user_message, key, major=True)
@@ -277,3 +278,5 @@ if __name__ == "__main__":
     # Create and save the score
     score = create_score_with_harmony(combined_predicted_chords, combined_measures, key)
     score.write('musicxml', 'complex_melody_harmony.xml')
+
+    score.show('midi')

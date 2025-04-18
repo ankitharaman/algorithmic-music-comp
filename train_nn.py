@@ -1,7 +1,10 @@
+#!/usr/bin/env python
+
 from tensorflow import keras
 # from tensorflow.keras import layers
 import music21
 import numpy as np
+import sys
 import os
 
 layers = keras.layers
@@ -208,7 +211,7 @@ def create_model(num_scale_degrees=7):
     
     return model
 
-def train_on_multiple_scores(score_files, epochs=30, batch_size=32):
+def train_on_multiple_scores(score_files, output_file, epochs=30, batch_size=32):
     # Initialize empty lists to hold all processed data
     all_melody_measures = []
     all_harmony_measures = []
@@ -274,7 +277,7 @@ def train_on_multiple_scores(score_files, epochs=30, batch_size=32):
     )
     
     # Save model
-    model.save('negative_harmony_model.h5')
+    model.save(output_file)
     
     return model, history
 
@@ -306,4 +309,11 @@ def train_model_on_directory(directory_path, epochs=30, batch_size=32):
     # Train on the found files
     return train_on_multiple_scores(score_files, epochs, batch_size)
 
-negative_model, history = train_model_on_directory('./scores/negative_scores')
+if __name__ == "__main__":
+    if "--pos" in sys.argv:
+        positive_model, history = train_model_on_directory('./scores/positive_scores', "positive_harmony_model.h5")
+    elif "--neg" in sys.argv:
+        negative_model, history = train_model_on_directory('./scores/negative_scores', "negative_harmony_model.h5")
+    else:
+        positive_model, history = train_model_on_directory('./scores/positive_scores', "positive_harmony_model.h5")
+        negative_model, history = train_model_on_directory('./scores/negative_scores', "negative_harmony_model.h5")
