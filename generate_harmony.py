@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import music21
 import numpy as np
 from redblack import generate_rb_stream
