@@ -75,9 +75,9 @@ class MusicalHashTable:
 def array_to_music21(array_data, key="C", scale_type="major"):
     # Create scale
     if scale_type.lower() == "major":
-        sc = scale.MajorScale(key)
+        sc = scale.MajorScale(key.tonic)
     elif scale_type.lower() == "minor":
-        sc = scale.MinorScale(key)
+        sc = scale.MinorScale(key.tonic)
     else:
         raise ValueError(f"Unsupported scale type: {scale_type}")
     
@@ -95,7 +95,7 @@ def array_to_music21(array_data, key="C", scale_type="major"):
             dur_value = 1.0
         else:
             # For other durations: 1.0 (quarter) divided by number of elements
-            dur_value = 1.0 / len(beat)
+            dur_value = float(1.0 / len(beat))
         
         # Add each note in the beat
         for scale_degree in beat:
@@ -124,42 +124,15 @@ def array_to_music21(array_data, key="C", scale_type="major"):
     return s
 
 
+def generate_hashtable_stream(user_message, k, major=True):
+    words = user_message.split(" ")
+    ht = MusicalHashTable()
+    for word in words:
+        ht.insert(word)
 
-ht = MusicalHashTable()
+    if not major:
+        s = array_to_music21(ht.melody, key=k, scale_type="minor")
+        return s
 
-# Insert key-value pairs
-ht.insert("I")
-print(ht)
-ht.insert("went")
-print(ht)
-ht.insert("to")
-print(ht)
-ht.insert("the")
-print(ht)
-ht.insert("store")
-print(ht)
-ht.insert("again")
-print(ht)
-ht.insert("I")
-print(ht)
-ht.insert("I")
-print(ht)
-ht.insert("went")
-print(ht)
-ht.insert("to")
-print(ht)
-ht.insert("the")
-print(ht)
-ht.insert("store")
-print(ht)
-ht.insert("again")
-print(ht)
-ht.insert("I")
-
-# Print the hash table
-print(ht)
-print(ht.melody)
-
-
-score = array_to_music21(ht.melody, key="D", scale_type="minor")
-score.show()
+    s = array_to_music21(ht.melody, key=k, scale_type="major")
+    return s
