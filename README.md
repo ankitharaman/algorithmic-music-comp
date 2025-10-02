@@ -23,5 +23,21 @@ Melodies are generated as aural representations of data structure operations:
 A pre-trained neural network predicts harmonies for the generated melody.
 
 ## Install Dependencies:
+```
 pip install -r requirements.txt
+```
+
+Includes: music21, numpy, tensorflow / keras
+
+### Usage:
+1. Preprocess Training Data
+- The main.py file preprocesses positive and negative training examples (classical scores in MusicXML format)
+  ```
+  python main.py --preprocess
+  ```
+- These will generate positive.pkl & negative.pkl, which contain serialized melody-harmony pairs for model training
+2. Generate Music From Text
+- Running ``` python predict_harmony.py ``` generates a melody and harmony from user input
+  - This file will output a MusicXML file and play back the result as MIDI
+  - To use your own input string, edit the ``` user_message ``` in ``` predict_harmony.py ```
 
